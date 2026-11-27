@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw/
+data/silver/
+*.duckdb
+.env
+credentials*.json
+.DS_Store
+Thumbs.db

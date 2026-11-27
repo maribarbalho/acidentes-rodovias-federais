@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rodovias Federais · Onde se morre</title>
+<meta name="description" content="Acidentes nas rodovias federais (PRF, 2017 a 2025): pipeline medalhão em Polars e PySpark/Databricks, mapa dos trechos críticos, causas mais letais e quem morre.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --abyss:#03070d; --navy:#07111f; --line:#1a2a42; --fog:#94a3b8; --mist:#cbd5e1; --ice:#c7d7fe; --white:#f1f5f9; --sky:#60a5fa; --signal:#a78bfa; --s1:#3987e5; --s2:#d95926; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--abyss); color:var(--mist); font:17px/1.6 "Archivo", system-ui, sans-serif; }
+  a { color:var(--ice); text-underline-offset:3px; } a:hover { color:var(--white); }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 16px; }
+  @media (min-width:768px){ .wrap{ padding:0 40px; } }
+  .mono { font-family:"JetBrains Mono", monospace; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--fog); }
+  .mono b { color:var(--signal); font-weight:500; }
+  header.top { display:flex; justify-content:space-between; padding:22px 0; } header.top a { text-decoration:none; }
+  .hero { padding:72px 0 48px; }
+  .hero h1 { margin:18px 0 0; color:var(--white); font-weight:800; font-stretch:115%; letter-spacing:-.035em; font-size:clamp(40px,7vw,104px); line-height:.94; max-width:15ch; }
+  .hero h1 em { font-family:"Instrument Serif", Georgia, serif; font-style:italic; font-weight:400; font-stretch:100%; color:var(--sky); letter-spacing:-.01em; }
+  .lead { font-size:clamp(18px,2vw,22px); max-width:62ch; margin:28px 0 0; }
+  .kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:28px 24px; margin:56px 0 0; }
+  @media (min-width:900px){ .kpis{ grid-template-columns:repeat(4,1fr); } }
+  .kpi { border-top:1px solid var(--line); padding-top:14px; }
+  .kpi .v { font-family:"JetBrains Mono", monospace; color:var(--white); font-size:clamp(28px,3.4vw,44px); line-height:1; }
+  .kpi .l { margin-top:10px; font-size:14px; color:var(--fog); }
+  section.chapter { border-top:1px solid var(--line); padding:64px 0; display:grid; gap:28px; }
+  @media (min-width:900px){ section.chapter{ grid-template-columns:4fr 8fr; gap:48px; } }
+  section.wide { grid-template-columns:1fr !important; }
+  .chapter h2 { color:var(--white); font-size:clamp(26px,3vw,38px); line-height:1.1; letter-spacing:-.02em; margin:12px 0 16px; font-weight:700; }
+  .chapter p { margin:0 0 14px; } .note { font-size:14px; color:var(--fog); }
+  .fig { min-width:0; } .fig h3 { margin:0 0 4px; font-size:15px; color:var(--white); font-weight:600; }
+  .fig .sub { margin:0 0 12px; font-size:13px; color:var(--fog); }
+  .fig + .fig { margin-top:36px; } .panels > .fig + .fig { margin-top:0; }
+  .panels { display:grid; gap:22px; } @media (min-width:700px){ .panels{ grid-template-columns:1fr 1fr; } }
+  .maplayout { display:grid; gap:28px; } @media (min-width:1000px){ .maplayout{ grid-template-columns:8fr 4fr; } }
+  .toggle { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+  .toggle button { font:inherit; font-size:13px; color:var(--mist); background:var(--navy); border:1px solid var(--line); border-radius:999px; padding:6px 14px; cursor:pointer; }
+  .toggle button[aria-pressed="true"] { border-color:var(--s1); color:var(--white); background:#0c1d36; }
+  .toggle button:focus-visible { outline:2px solid var(--sky); outline-offset:2px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--fog); font-weight:500; } td.n, th.n { text-align:right; font-family:"JetBrains Mono", monospace; } td.n { color:var(--white); }
+  tbody tr { cursor:default; } tbody tr:hover td { background:#0b1626; }
+  .ok { color:#4ade80; }
+  .actions { counter-reset:a; list-style:none; padding:0; margin:0; display:grid; gap:18px; }
+  @media (min-width:700px){ .actions{ grid-template-columns:1fr 1fr; } }
+  .actions li { border-top:1px solid var(--line); padding-top:12px; }
+  .actions li::before { counter-increment:a; content:"0" counter(a); font-family:"JetBrains Mono", monospace; font-size:12px; color:var(--signal); }
+  .actions b { display:block; color:var(--white); margin:4px 0; }
+  .flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+  .step { border:1px solid var(--line); border-top:2px solid var(--s1); border-radius:12px; padding:12px 14px; background:var(--navy); }
+  .step .t { font-family:"JetBrains Mono", monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--sky); }
+  .step .h { color:var(--white); font-weight:600; margin:4px 0 2px; } .step .d { font-size:13px; color:var(--fog); line-height:1.4; }
+  footer { border-top:1px solid var(--line); padding:40px 0 64px; font-size:14px; color:var(--fog); }
+  svg { max-width:100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="mono" href="https://maribarbalho.github.io/">Mariana Barbalho</a>
+    <a class="mono" href="https://github.com/maribarbalho/acidentes-rodovias-federais">Código ↗</a>
+  </header>
+
+  <section class="hero">
+    <p class="mono"><b>PRF</b> · Dados abertos · 2017 a 2025</p>
+    <h1>Onde se morre nas <em>rodovias federais</em></h1>
+    <p class="lead">Nove anos de boletins da Polícia Rodoviária Federal, tratados em um pipeline medalhão (Polars localmente e PySpark no Databricks),
+      para responder onde, quando e por que os acidentes matam, e quais trechos pedem intervenção primeiro.</p>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>01</b> · Tendência</p>
+      <h2>Menos acidentes que em 2017, mas cada acidente ficou mais letal</h2>
+      <p id="t-serie"></p>
+    </div>
+    <div class="panels">
+      <div class="fig"><h3>Acidentes por ano</h3><p class="sub">Registrados pela PRF</p><div id="c-acidentes"></div></div>
+      <div class="fig"><h3>Mortos a cada 100 acidentes</h3><p class="sub">Letalidade</p><div id="c-letalidade"></div></div>
+    </div>
+  </section>
+
+  <section class="chapter wide">
+    <div>
+      <p class="mono"><b>02</b> · Mapa</p>
+      <h2>A malha das rodovias desenhada pelos próprios acidentes</h2>
+      <p id="t-mapa" style="max-width:70ch"></p>
+    </div>
+    <div class="maplayout">
+      <div class="fig">
+        <div class="toggle" id="toggle-mapa" role="group" aria-label="Medida do mapa">
+          <button type="button" data-k="m" aria-pressed="true">Mortos</button>
+          <button type="button" data-k="a" aria-pressed="false">Acidentes</button>
+        </div>
+        <div id="c-mapa"></div>
+        <p class="note">2021 a 2025. Cada ponto é uma célula de 0,1° (cerca de 11 km). Passe o mouse para ver os números.</p>
+      </div>
+      <div class="fig">
+        <h3>Trechos de 10 km com mais mortes</h3>
+        <p class="sub">2021 a 2025 · passe o mouse para destacar no mapa</p>
+        <table id="trechos"></table>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>03</b> · Causas</p>
+      <h2>As causas mais frequentes não são as mais letais</h2>
+      <p id="t-causas"></p>
+      <p class="note">2021 a 2025, causas com 300 acidentes ou mais, sem suicídio presumido. Eixo horizontal em escala logarítmica.</p>
+    </div>
+    <div class="fig">
+      <h3>Frequência × letalidade por causa principal</h3>
+      <p class="sub">Tamanho do ponto = número de mortos</p>
+      <div id="c-causas"></div>
+    </div>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>04</b> · Contexto</p>
+      <h2>Noite, pista simples e trecho rural: a combinação que mata</h2>
+      <p id="t-contexto"></p>
+    </div>
+    <div>
+      <div class="fig"><h3>Mortos a cada 100 acidentes, por condição</h3><p class="sub">2021 a 2025 · fase do dia, tipo de pista e área</p><div id="c-condicoes"></div></div>
+      <div class="fig"><h3>Mortos por dia da semana e hora</h3><p class="sub">2021 a 2025</p><div id="c-heatmap"></div></div>
+    </div>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>05</b> · Vítimas</p>
+      <h2>Quem morre: motociclistas, homens jovens e pedestres</h2>
+      <p id="t-vitimas"></p>
+    </div>
+    <div class="panels">
+      <div class="fig"><h3>Óbitos por veículo da vítima</h3><p class="sub">2021 a 2025</p><div id="c-veiculo"></div></div>
+      <div class="fig"><h3>Óbitos por idade e sexo</h3><p class="sub">2021 a 2025</p><div id="c-idade"></div></div>
+    </div>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>06</b> · Recomendações</p>
+      <h2>Onde intervir primeiro</h2>
+    </div>
+    <ol class="actions" id="acoes"></ol>
+  </section>
+
+  <section class="chapter">
+    <div>
+      <p class="mono"><b>07</b> · Método</p>
+      <h2>O mesmo pipeline em Polars e em PySpark, com os mesmos números</h2>
+      <p id="t-metodo"></p>
+    </div>
+    <div>
+      <div class="fig"><h3>Pipeline medalhão</h3><div class="flow" id="flow"></div></div>
+      <div class="fig"><h3>Qualidade e reconciliação</h3><p class="sub">Verificações automáticas do pipeline</p><table id="qualidade"></table></div>
+      <div class="fig"><h3>Execução no Databricks</h3><p class="sub">Última célula do notebook PySpark (serverless, Unity Catalog)</p>
+        <img src="img/databricks-reconciliacao.png" alt="Tabela no Databricks com os totais de acidentes, mortos, pessoas e óbitos iguais entre Polars e PySpark" style="width:100%;border:1px solid var(--line);border-radius:10px"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Dados: <a href="https://www.gov.br/prf/pt-br/acesso-a-informacao/dados-abertos/dados-abertos-da-prf">PRF, dados abertos de acidentes</a> (ocorrências e pessoas envolvidas), 2017 a 2025.
+      "Mortos" são os óbitos registrados no boletim da PRF. Associações descritas não são relações de causa.</p>
+    <p>Mariana Barbalho · <a href="https://maribarbalho.github.io/">Portfólio</a> · <a href="https://github.com/maribarbalho/acidentes-rodovias-federais">Código no GitHub</a> · <a href="https://www.linkedin.com/in/mariana-barbalho-619254202">LinkedIn</a></p>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.16/dist/plot.umd.min.js"></script>
+<script>
+(async function () {
+  const C = { s1:"#3987e5", s2:"#d95926", ink:"#cbd5e1", fog:"#94a3b8", line:"#1a2a42", white:"#f1f5f9" };
+  const nf = (d) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits:d, minimumFractionDigits:d });
+  const int = (v) => nf(0).format(v);
+  const mil = (v) => nf(1).format(v / 1000) + " mil";
+  const pct = (v, d = 1) => nf(d).format(v * 100) + "%";
+  const $ = (id) => document.getElementById(id);
+  const m = await (await fetch("data/rodovias.json")).json();
+
+  const base = (o) => ({ style:{ background:"transparent", color:C.ink, fontFamily:"Archivo, system-ui, sans-serif", fontSize:"12px", overflow:"visible" },
+                         marginLeft:44, marginRight:16, marginTop:14, marginBottom:32, ...o });
+  const W = (el) => Math.max(280, el.clientWidth || 600);
+  const mount = (id, fn) => { const el = $(id); const draw = () => el.replaceChildren(fn(W(el))); draw();
+    new ResizeObserver(() => { clearTimeout(el._t); el._t = setTimeout(draw, 120); }).observe(el); return draw; };
+  const tip = { fill:"#07111f", stroke:C.line, textPadding:8 };
+  const grid = (axis = "y", ticks = 4) => (axis === "y" ? Plot.gridY : Plot.gridX)({ stroke:C.line, strokeOpacity:1, ticks });
+
+  const A = m.anual, a17 = A[0], a25 = A[A.length - 1];
+  const totA = d3.sum(A, (r) => r.acidentes), totM = d3.sum(A, (r) => r.mortos);
+  const V = m.vitimas, moto = V.por_veiculo.filter((r) => ["Motocicleta", "Motoneta", "Ciclomotor"].includes(r.tipo_veiculo));
+  const motoTot = d3.sum(moto, (r) => r.obitos);
+  const ped = V.por_envolvido.find((r) => r.tipo_envolvido === "Pedestre");
+
+  $("kpis").innerHTML = [
+    [mil(totA), "acidentes registrados pela PRF de 2017 a 2025"],
+    [mil(totM), "mortos no mesmo período"],
+    [nf(1).format(a25.mortos_por_100), `mortos a cada 100 acidentes em 2025, contra ${nf(1).format(a17.mortos_por_100)} em 2017`],
+    [pct(motoTot / V.total_obitos, 0), "dos óbitos de 2021 a 2025 eram de motociclistas"],
+  ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  // 01 série
+  mount("c-acidentes", (w) => Plot.plot(base({ width:w, height:240,
+    x:{ label:null, tickFormat:(d) => String(d), tickSize:0 }, y:{ label:null, tickFormat:(v) => nf(0).format(v / 1000) + " mil", ticks:4 },
+    marks:[ grid(), Plot.barY(A, { x:"ano", y:"acidentes", fill:C.s1, rx:3, insetLeft:3, insetRight:3 }),
+      Plot.tip(A, Plot.pointerX({ x:"ano", y:"acidentes", ...tip, title:(r) => `${r.ano}\n${int(r.acidentes)} acidentes\n${int(r.mortos)} mortos` })) ] })));
+  mount("c-letalidade", (w) => Plot.plot(base({ width:w, height:240,
+    x:{ label:null, tickFormat:(d) => String(d), tickSize:0, ticks:A.length }, y:{ label:null, domain:[0, 10], ticks:5 },
+    marks:[ grid(), Plot.lineY(A, { x:"ano", y:"mortos_por_100", stroke:C.s1, strokeWidth:2 }),
+      Plot.dot(A, { x:"ano", y:"mortos_por_100", fill:C.s1, r:4, stroke:"#03070d", strokeWidth:2 }),
+      Plot.text([a17, a25], { x:"ano", y:"mortos_por_100", text:(r) => nf(1).format(r.mortos_por_100), dy:-14, fill:C.white }),
+      Plot.tip(A, Plot.pointerX({ x:"ano", y:"mortos_por_100", ...tip, title:(r) => `${r.ano}\n${nf(2).format(r.mortos_por_100)} mortos a cada 100 acidentes\n${int(r.acidentes_fatais)} acidentes com morte` })) ] })));
+  $("t-serie").textContent = `Em 2017 a PRF registrou ${int(a17.acidentes)} acidentes; em 2025, ${int(a25.acidentes)}. As mortes não acompanharam a queda: foram ${int(a17.mortos)} em 2017 e ${int(a25.mortos)} em 2025. ` +
+    `Com isso, a letalidade subiu de ${nf(1).format(a17.mortos_por_100)} para ${nf(1).format(a25.mortos_por_100)} mortos a cada 100 acidentes. Mudanças no registro de acidentes leves podem explicar parte da queda no total; as mortes são o indicador mais estável.`;
+
+  // 02 mapa
+  const cols = m.mapa.colunas, P = m.mapa.dados.map((r) => ({ lon:r[0] / 10, lat:r[1] / 10, a:r[2], m:r[3] }));
+  const T = m.trechos.slice(0, 15);
+  let medida = "m", destaque = null;
+  const drawMapa = mount("c-mapa", (w) => {
+    const d = P.filter((p) => p[medida] > 0).sort((x, y) => x[medida] - y[medida]);
+    // Camada de base: toda a malha, discreta. Camada de destaque: as 3% de células com maior valor.
+    const corte = d3.quantile(d.map((p) => p[medida]), 0.97);
+    const top = d.filter((p) => p[medida] >= corte);
+    const max = d3.max(top, (p) => p[medida]);
+    const nome = medida === "m" ? "mortos" : "acidentes";
+    return Plot.plot(base({ width:w, height:Math.min(760, w * 1.02), marginLeft:0, marginRight:0, marginTop:28, marginBottom:0,
+      projection:{ type:"mercator", domain:{ type:"MultiPoint", coordinates:P.map((p) => [p.lon, p.lat]) } },
+      color:{ type:"sqrt", domain:[corte, max], range:["#3987e5", "#eaf3ff"], legend:true, width:260,
+              label:`Células no topo 3% (${nome})`, tickFormat:(v) => int(v) },
+      r:{ type:"sqrt", domain:[0, max], range:[0, 9] },
+      marks:[
+        Plot.dot(d, { x:"lon", y:"lat", r:1.3, fill:"#29425f", stroke:null }),
+        Plot.dot(top, { x:"lon", y:"lat", r:(p) => p[medida], fill:(p) => p[medida], stroke:"#03070d", strokeWidth:0.8 }),
+        destaque ? Plot.dot([destaque], { x:"lon", y:"lat", r:16, stroke:C.s2, strokeWidth:2.5, fill:null }) : null,
+        Plot.tip(d, Plot.pointer({ x:"lon", y:"lat", ...tip, maxRadius:20,
+          title:(p) => `${nf(1).format(p.lat)}°, ${nf(1).format(p.lon)}°
+${int(p.a)} acidentes · ${int(p.m)} mortos` })),
+      ] }));
+  });
+  $("toggle-mapa").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
+    medida = b.dataset.k; $("toggle-mapa").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b)); drawMapa(); });
+  $("trechos").innerHTML = `<thead><tr><th>Trecho</th><th class="n">Mortos</th><th class="n">Acid.</th></tr></thead><tbody>` +
+    T.map((r, i) => `<tr data-i="${i}"><td>BR-${r.br} · km ${r.km_ini}–${r.km_ini + 10}<br><span class="note">${r.uf} · ${r.municipio ?? ""}</span></td><td class="n">${int(r.mortos)}</td><td class="n">${int(r.acidentes)}</td></tr>`).join("") + "</tbody>";
+  $("trechos").addEventListener("mouseover", (e) => { const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+    const r = T[+tr.dataset.i]; destaque = r.lat ? { lon:r.lon, lat:r.lat } : null; drawMapa(); });
+  $("trechos").addEventListener("mouseleave", () => { destaque = null; drawMapa(); });
+  const t0 = T[0], letal = [...m.trechos].filter((r) => r.acidentes >= 100).sort((a, b) => b.mortos_por_100 - a.mortos_por_100)[0];
+  $("t-mapa").textContent = `Os pontos mais claros se concentram nos acessos às regiões metropolitanas: o trecho com mais mortes é a BR-${t0.br} entre os km ${t0.km_ini} e ${t0.km_ini + 10}, em ${t0.municipio} (${t0.uf}), com ${t0.mortos} mortos em cinco anos. ` +
+    `Mas volume não é tudo: entre os 40 trechos com mais mortes, o mais letal é a BR-${letal.br}, km ${letal.km_ini}–${letal.km_ini + 10} (${letal.uf}), com ${nf(1).format(letal.mortos_por_100)} mortos a cada 100 acidentes.`;
+
+  // 03 causas
+  mount("c-causas", (w) => {
+    const LAB = ["Transitar na contramão", "Pedestre andava na pista", "Entrada inopinada do pedestre", "Ultrapassagem Indevida",
+                 "Ausência de reação do condutor", "Velocidade Incompatível", "Condutor Dormindo"];
+    // "Suicídio (presumido)" fica fora: não é um fator de segurança viária.
+    const d = m.causas.filter((r) => !r.causa.startsWith("Suicídio")), lab = d.filter((r) => LAB.includes(r.causa));
+    return Plot.plot(base({ width:w, height:440, marginLeft:48, marginRight:20,
+      x:{ type:"log", label:"Acidentes (escala log)", tickFormat:(v) => nf(0).format(v), grid:true },
+      y:{ label:"Mortos a cada 100 acidentes", grid:true, ticks:5 },
+      r:{ range:[2, 22] },
+      marks:[ Plot.gridX({ stroke:C.line, strokeOpacity:1 }), Plot.gridY({ stroke:C.line, strokeOpacity:1, ticks:5 }),
+        Plot.dot(d, { x:"acidentes", y:"mortos_por_100", r:"mortos", fill:C.s1, fillOpacity:0.75, stroke:"#03070d", strokeWidth:1 }),
+        Plot.text(lab, { x:"acidentes", y:"mortos_por_100", text:(r) => r.causa.length > 34 ? r.causa.slice(0, 32) + "…" : r.causa, dy:-14, fill:C.ink, fontSize:11 }),
+        Plot.tip(d, Plot.pointer({ x:"acidentes", y:"mortos_por_100", ...tip,
+          title:(r) => `${r.causa}\n${int(r.acidentes)} acidentes · ${int(r.mortos)} mortos\n${nf(1).format(r.mortos_por_100)} mortos a cada 100 acidentes` })) ] }));
+  });
+  const cz = (n) => m.causas.find((r) => r.causa === n);
+  const contra = cz("Transitar na contramão"), aus = cz("Ausência de reação do condutor"), ult = cz("Ultrapassagem Indevida"), pedC = cz("Pedestre andava na pista");
+  $("t-causas").textContent = `"Ausência de reação do condutor" é uma das causas mais frequentes (${int(aus.acidentes)} acidentes), mas mata ${nf(1).format(aus.mortos_por_100)} a cada 100. ` +
+    `"Transitar na contramão" tem um quarto desse volume e é a causa que mais mata: ${int(contra.mortos)} mortos, ${nf(1).format(contra.mortos_por_100)} a cada 100 acidentes. ` +
+    `Ultrapassagem indevida (${nf(1).format(ult.mortos_por_100)}) e pedestre andando na pista (${nf(1).format(pedC.mortos_por_100)}) completam o grupo de alta letalidade.`;
+
+  // 04 contexto
+  const NOMES = { fase_dia:"Fase do dia", tipo_pista:"Tipo de pista", urbano:"Área", condicao_meteo:"Tempo" };
+  const cond = m.condicoes.filter((r) => ["fase_dia", "tipo_pista", "urbano"].includes(r.dimensao))
+    .map((r) => ({ ...r, grupo:NOMES[r.dimensao], cat: r.dimensao === "urbano" ? (r.categoria === "True" ? "Urbana" : "Rural") : r.categoria }));
+  const ORD = ["Plena Noite", "Amanhecer", "Anoitecer", "Pleno dia", "Simples", "Dupla", "Múltipla", "Rural", "Urbana"];
+  mount("c-condicoes", (w) => Plot.plot(base({ width:w, height:320, marginLeft:96, marginRight:40,
+    y:{ label:null, tickSize:0, domain:ORD.filter((k) => cond.some((r) => r.cat === k)) },
+    x:{ label:null, grid:true, ticks:4 },
+    marks:[ Plot.gridX({ stroke:C.line, strokeOpacity:1, ticks:4 }),
+      Plot.barX(cond, { y:"cat", x:"mortos_por_100", fill:C.s1, rx:3, insetTop:3, insetBottom:3 }),
+      Plot.text(cond, { y:"cat", x:"mortos_por_100", text:(r) => nf(1).format(r.mortos_por_100), dx:6, textAnchor:"start", fill:C.ink }),
+      Plot.tip(cond, Plot.pointerY({ y:"cat", x:"mortos_por_100", ...tip, title:(r) => `${r.grupo}: ${r.cat}\n${int(r.acidentes)} acidentes · ${int(r.mortos)} mortos` })) ] })));
+  const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+  mount("c-heatmap", (w) => Plot.plot(base({ width:w, height:250, marginLeft:40, marginBottom:28, padding:0.06,
+    x:{ label:null, tickSize:0, ticks:12, tickFormat:(h) => h + "h" }, y:{ label:null, tickSize:0, domain:DIAS },
+    color:{ type:"linear", range:["#0c1a2e", "#7fb3f5"], legend:true, label:"Mortos", width:240 },
+    marks:[ Plot.cell(m.hora_dia, { x:"hora", y:(r) => DIAS[r.dia_idx], fill:"mortos", rx:2 }),
+      Plot.tip(m.hora_dia, Plot.pointer({ x:"hora", y:(r) => DIAS[r.dia_idx], ...tip, title:(r) => `${r.dia_semana}, ${r.hora}h\n${int(r.mortos)} mortos · ${int(r.acidentes)} acidentes` })) ] })));
+  const c = (d, k) => m.condicoes.find((r) => r.dimensao === d && r.categoria === k);
+  const pico = [...m.hora_dia].sort((a, b) => b.mortos - a.mortos)[0];
+  $("t-contexto").textContent = `À noite morrem ${nf(1).format(c("fase_dia", "Plena Noite").mortos_por_100)} pessoas a cada 100 acidentes; de dia, ${nf(1).format(c("fase_dia", "Pleno dia").mortos_por_100)}. ` +
+    `Em pista simples, ${nf(1).format(c("tipo_pista", "Simples").mortos_por_100)}, contra ${nf(1).format(c("tipo_pista", "Dupla").mortos_por_100)} em pista dupla, onde não há como invadir a contramão. ` +
+    `Em área rural, ${nf(1).format(c("urbano", "False").mortos_por_100)}; em área urbana, ${nf(1).format(c("urbano", "True").mortos_por_100)}. O horário com mais mortes é ${pico.dia_semana} às ${pico.hora}h, na volta dos fins de semana.`;
+
+  // 05 vítimas
+  mount("c-veiculo", (w) => { const d = V.por_veiculo.filter((r) => r.tipo_veiculo).slice(0, 8);
+    return Plot.plot(base({ width:w, height:280, marginLeft:110, marginRight:50, x:{ label:null, grid:true, ticks:4, tickFormat:(v) => nf(0).format(v / 1000) + " mil" },
+      y:{ label:null, tickSize:0, domain:d.map((r) => r.tipo_veiculo) },
+      marks:[ Plot.gridX({ stroke:C.line, strokeOpacity:1, ticks:4 }), Plot.barX(d, { y:"tipo_veiculo", x:"obitos", fill:C.s1, rx:3 }),
+        Plot.text(d, { y:"tipo_veiculo", x:"obitos", text:(r) => int(r.obitos), dx:6, textAnchor:"start", fill:C.ink }) ] })); });
+  const FX = ["0 a 17", "18 a 29", "30 a 44", "45 a 59", "60 ou mais"];
+  mount("c-idade", (w) => { const d = V.por_idade_sexo.filter((r) => FX.includes(r.faixa) && ["Masculino", "Feminino"].includes(r.sexo));
+    return Plot.plot(base({ width:w, height:280, marginLeft:80, x:{ label:null, grid:true, ticks:4, tickFormat:(v) => nf(0).format(v / 1000) + " mil" }, y:{ label:null, tickSize:0, domain:FX },
+      color:{ domain:["Masculino", "Feminino"], range:[C.s1, C.s2], legend:true },
+      marks:[ Plot.gridX({ stroke:C.line, strokeOpacity:1, ticks:4 }), Plot.barX(d, { y:"faixa", x:"obitos", fill:"sexo", rx:2, insetTop:2, insetBottom:2 }),
+        Plot.tip(d, Plot.pointerY({ y:"faixa", x:"obitos", ...tip, title:(r) => `${r.faixa} · ${r.sexo}\n${int(r.obitos)} óbitos` })) ] })); });
+  const homens = d3.sum(V.por_idade_sexo.filter((r) => r.sexo === "Masculino"), (r) => r.obitos);
+  $("t-vitimas").textContent = `De 2021 a 2025, ${int(V.total_obitos)} pessoas morreram nas rodovias federais. ${pct(motoTot / V.total_obitos, 0)} estavam em motocicletas ou similares, ` +
+    `${pct(homens / V.total_obitos, 0)} eram homens e ${int(ped.obitos)} eram pedestres (${pct(ped.obitos / V.total_obitos, 0)}). A faixa de 30 a 44 anos concentra o maior número de mortes.`;
+
+  // 06 recomendações
+  $("acoes").innerHTML = [
+    ["Duplicar e separar fluxos", `Pista simples tem mais que o dobro da letalidade da pista dupla, e contramão e ultrapassagem indevida estão entre as causas mais letais. Duplicação, terceira faixa e separadores físicos atacam a colisão frontal.`],
+    ["Priorizar a lista de trechos", `Os segmentos de 10 km com mais mortes estão no mapa. Somar volume (mortos) e letalidade (mortos por 100 acidentes) dá uma ordem objetiva para obras e radares.`],
+    ["Fiscalização no horário certo", `As mortes se concentram no fim da tarde e início da noite de sábado e domingo. É ali que fiscalização e campanhas rendem mais.`],
+    ["Proteger motociclistas e pedestres", `Motociclistas e pedestres somam boa parte dos óbitos. Travessias seguras em trechos urbanos e faixas exclusivas ou fiscalização de motos são medidas diretas.`],
+  ].map(([h, x]) => `<li><b>${h}</b>${x}</li>`).join("");
+
+  // 07 método
+  const q = m.qualidade;
+  $("t-metodo").textContent = `Os CSVs da PRF chegam em latin-1, com decimal em vírgula, "NA" como nulo e alguns ids em notação científica ("1e+05"). ` +
+    `A camada silver resolve isso uma vez; a gold gera os agregados desta página. O mesmo desenho roda em PySpark no Databricks, gravando tabelas Delta, e os totais das duas versões são comparados célula a célula.`;
+  $("flow").innerHTML = [
+    ["Bronze", "18 ZIPs da PRF", `${mil(q.acidentes)} ocorrências e ${nf(1).format(q.linhas_bronze_vitimas / 1e6)} milhões de linhas por pessoa, causa e tipo`],
+    ["Silver", "Parquet / Delta", `tipos, padronização, flags de qualidade; ${nf(2).format(q.pessoas_silver / 1e6)} milhão de pessoas únicas`],
+    ["Gold", "rodovias.json / Delta", "série, causas, condições, trechos, grade do mapa e vítimas"],
+    ["Engines", "Polars · PySpark", "local em segundos; Databricks serverless no Unity Catalog"],
+  ].map(([a, b, d], i) => `<div class="step"><div class="t">0${i + 1} · ${a}</div><div class="h">${b}</div><div class="d">${d}</div></div>`).join("");
+  $("qualidade").innerHTML = "<tbody>" + [
+    ["Totais Polars × PySpark no Databricks (acidentes, mortos, pessoas, óbitos)", "5 de 5 iguais", true],
+    ["Mortos nas ocorrências × pessoas com estado “Óbito” (2021–2025)", `${int(q.mortos_ocorrencias)} × ${int(q.obitos_pessoas)}`, q.mortos_ocorrencias === q.obitos_pessoas],
+    ["Ocorrências sem BR ou km", int(q.sem_br_ou_km), q.sem_br_ou_km === 0],
+    ["Ocorrências com coordenada fora do Brasil", int(q.sem_coordenada_valida), true],
+    ["Linhas por pessoa, causa e tipo → pessoas únicas", `${nf(2).format(q.linhas_bronze_vitimas / 1e6)} mi → ${nf(2).format(q.pessoas_silver / 1e6)} mi`, true],
+  ].map(([a, b, ok]) => `<tr><td>${a}</td><td class="n">${b}</td><td class="n ${ok ? "ok" : ""}">${ok ? "✓" : "!"}</td></tr>`).join("") + "</tbody>";
+})();
+</script>
+</body>
+</html>
